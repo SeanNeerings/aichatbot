@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Recognition Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Speech Recognition Demo</h1>
+  <label for="microphoneSelect">Select Microphone:</label>
+  <select id="microphoneSelect">
+  </select>
+  <br>
+  <button id="startRecognition">Start Recognition</button>
+  <div id="transcription"></div>
+
+  <script>
+    const startButton = document.getElementById('startRecognition');
+    const transcriptionDiv = document.getElementById('transcription');
+    const microphoneSelect = document.getElementById('microphoneSelect');
+
+    async function populateMicrophones() {
+      try {
+        const response = await fetch('http://localhost:3000/getMicrophones');
+        const microphones = await response.json();
+
+        microphones.forEach(mic => {
+          const option = document.createElement('option');
+          option.value = mic.deviceId;
+          option.text = mic.label;
+          microphoneSelect.add(option);
+        });
+      } catch (error) {
+        console.error('Error fetching microphones:', error);
+      }
+    }
+
+    // Function to start recognition
+    async function startRecognition() {
+      try {
+        const selectedMicrophone = microphoneSelect.value;
+        const response = await fetch(`http://localhost:3000/recognize?microphone=${selectedMicrophone}`);
+        const result = await response.json();
+        transcriptionDiv.innerText = result.transcription || 'No transcription available.';
+      } catch (error) {
+        console.error('Error during recognition:', error);
+      }
+    }
+
+    // Event listeners
+    startButton.addEventListener('click', startRecognition);
+    window.addEventListener('load', populateMicrophones);
+  </script>
+</body>
+</html>
