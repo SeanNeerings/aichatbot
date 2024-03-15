@@ -36,7 +36,6 @@
       }
     }
 
-    // Function to start recognition
     async function startRecognition() {
       try {
         const selectedMicrophone = microphoneSelect.value;
@@ -48,7 +47,6 @@
       }
     }
 
-    // Event listeners
     startButton.addEventListener('click', startRecognition);
     window.addEventListener('load', populateMicrophones);
   </script>

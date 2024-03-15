@@ -1,55 +1,90 @@
 const express = require('express');
-const { SpeechClient } = require('@google-cloud/speech');
+const axios = require('axios');
 const record = require('node-record-lpcm16');
 const fs = require('fs');
+require('dotenv').config(); 
 
 const app = express();
 const port = 3000;
 
-const speechClient = new SpeechClient({
-  projectId: 'aichatbot-416813',
-  keyFilename: '../../keys/aichatbot-416813-0cf8c17dfe75.json',
-});
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
-app.get('/recognize', (req, res) => {
+if (!openaiApiKey) {
+  console.error('OpenAI API key not found. Please check your .env file.');
+  process.exit(1);
+}
+
+app.get('/recognize', async (req, res) => {
   const microphoneName = req.query.microphone || 'default'; 
   const recording = record.record({
     sampleRate: 16000,
     device: microphoneName,
   });
 
-  const recognizeStream = speechClient
-    .streamingRecognize({
-      config: {
-        encoding: 'LINEAR16',
-        sampleRateHertz: 16000,
-        languageCode: 'en-US',
-      },
-    })
-    .on('error', console.error)
-    .on('data', data => {
-      const transcription = data.results
-        .map(result => result.alternatives[0].transcript)
-        .join('\n');
-      console.log('Transcription:', transcription);
-      res.json({ transcription });
-    });
+  let partialTranscription = '';
+  let responseSent = false;
 
-  recording.stream().pipe(recognizeStream);
+  const stopRecording = () => {
+    recording.stop();
+    console.log('Stopping microphone recording.');
+  };
+
+  recording.stream().on('data', async (audioData) => {
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`,
+      };
+
+      console.log('Request Headers:', headers);
+
+      const response = await axios.post(
+        'https://api.openai.com/v1/engines/davinci-codex/completions',
+        {
+          prompt: 'Transcribe the following audio: ' + audioData.toString('base64'),
+          max_tokens: 100,  
+        },
+        {
+          headers,
+        }
+      );
+
+      console.log('OpenAI API Response:', response.data);
+
+      const partialResult = response.data.choices[0].text.trim();
+      partialTranscription += partialResult;
+
+    } catch (error) {
+      console.error('OpenAI API Error:', error.message);
+
+      if (!responseSent) {
+        res.status(500).json({ error: 'OpenAI API Error' });
+        responseSent = true;
+      }
+    }
+  });
 
   req.connection.on('close', () => {
-    recording.stop();
-    console.log('Connection closed. Stopping microphone recording.');
+    stopRecording();
+    console.log('Connection closed.');
+
+    if (!responseSent) {
+      res.json({ transcription: partialTranscription });
+      responseSent = true;
+    }
+  });
+
+  req.on('end', () => {
+    stopRecording();
+    console.log('Request ended.');
+
+    if (!responseSent) {
+      res.json({ transcription: partialTranscription });
+      responseSent = true;
+    }
   });
 });
 
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
-});
-
-process.on('SIGINT', () => {
-  server.close(() => {
-    console.log('Server closed. Stopping microphone recording.');
-    process.exit(0);
-  });
 });
